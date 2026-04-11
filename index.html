@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Execute Logs</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase SDKs -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue, query, limitToLast, orderByKey } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ── REPLACE THESE WITH YOUR FIREBASE CONFIG ──
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyD6hedvjGoaKqKv3V4voqkrleW8tPeOxkc",
+  authDomain: "okok9k-7b233.firebaseapp.com",
+  databaseURL: "https://okok9k-7b233-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "okok9k-7b233",
+  storageBucket: "okok9k-7b233.firebasestorage.app",
+  messagingSenderId: "739334555707",
+  appId: "1:739334555707:web:ca172dae3f8c3ab298b41e",
+  measurementId: "G-F01BX48W8F"
+};
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  function timeAgo(ts) {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60)  return diff + "s ago";
+    if (diff < 3600) return Math.floor(diff/60) + "m ago";
+    return Math.floor(diff/3600) + "h ago";
+  }
+
+  function renderCard(data) {
+    return `
+      <div class="card" style="animation: slideIn 0.4s ease">
+        <div class="card-header">
+          <img src="${data.avatarUrl || ''}" class="avatar" onerror="this.style.display='none'"/>
+          <div class="card-title">
+            <span class="display-name">${data.displayName || '?'}</span>
+            <span class="username">@${data.username || '?'}</span>
+          </div>
+          <span class="time-ago">${timeAgo(data.timestamp || Date.now())}</span>
+        </div>
+        <div class="card-fields">
+          <div class="field"><span class="label">EXECUTOR</span><span class="value exec">${data.executor || 'Unknown'}</span></div>
+          <div class="field"><span class="label">GAME</span><span class="value">${data.game || 'Unknown'}</span></div>
+          <div class="field"><span class="label">REGION</span><span class="value">${data.region || 'Unknown'}</span></div>
+          <div class="field"><span class="label">JOB ID</span><span class="value mono">${(data.jobId || '').substring(0,16)}...</span></div>
+        </div>
+        <a class="profile-link" href="https://www.roblox.com/users/${data.userId}/profile" target="_blank">VIEW PROFILE →</a>
+      </div>
+    `;
+  }
+
+  function init() {
+    const logsRef  = query(ref(db, "logs"), orderByKey(), limitToLast(50));
+    const grid     = document.getElementById("grid");
+    const counter  = document.getElementById("counter");
+    const loader   = document.getElementById("loader");
+
+    onValue(logsRef, (snapshot) => {
+      loader.style.display = "none";
+      const val = snapshot.val();
+      if (!val) {
+        grid.innerHTML = '<p class="empty">No executions logged yet.</p>';
+        return;
+      }
+      const entries = Object.values(val).reverse();
+      counter.textContent = entries.length;
+      grid.innerHTML = entries.map(renderCard).join("");
+    });
+  }
+
+  window.addEventListener("DOMContentLoaded", init);
+</script>
+
+<style>
+  :root {
+    --bg:      #0a0c10;
+    --surface: #0f1318;
+    --border:  #1e2530;
+    --blue:    #42A5F5;
+    --blue2:   #1565C0;
+    --text:    #c9d1d9;
+    --muted:   #4a5568;
+    --accent:  #00e5ff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.07) 2px,
+      rgba(0,0,0,0.07) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(90deg, #0f1318 0%, #0d1520 100%);
+  }
+
+  .logo {
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  .badge {
+    margin-left: auto;
+    background: var(--blue2);
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    padding: 4px 12px;
+    border-radius: 2px;
+    border: 1px solid var(--blue);
+  }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 20px;
+  }
+
+  .section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+
+  .section-label span {
+    color: var(--accent);
+    margin-left: 8px;
+  }
+
+  #loader {
+    text-align: center;
+    padding: 60px;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 2px;
+    font-size: 0.8rem;
+  }
+
+  #loader::after {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-left: 8px;
+    animation: pulse 0.8s infinite;
+  }
+
+  .empty {
+    text-align: center;
+    padding: 60px;
+    color: var(--muted);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--blue);
+    border-radius: 4px;
+    padding: 20px;
+    transition: border-color 0.2s, transform 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 60px;
+    background: linear-gradient(180deg, rgba(66,165,245,0.06) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .card:hover {
+    border-top-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .avatar {
+    width: 44px; height: 44px;
+    border-radius: 4px;
+    border: 2px solid var(--blue);
+    object-fit: cover;
+    background: var(--blue2);
+  }
+
+  .card-title {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .display-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #fff;
+    letter-spacing: 1px;
+  }
+
+  .username {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .time-ago {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    align-self: flex-start;
+  }
+
+  .card-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+  }
+
+  .value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .value.exec { color: var(--accent); }
+  .value.mono {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .profile-link {
+    display: block;
+    text-align: center;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--blue);
+    text-decoration: none;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  .profile-link:hover {
+    background: var(--blue);
+    color: #fff;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"></div>
+  <h1>EXECUTE <span>LOGS</span></h1>
+  <div class="badge">LIVE · <span id="counter">0</span> ENTRIES</div>
+</header>
+<main>
+  <div class="section-label">RECENT EXECUTIONS <span>▮</span></div>
+  <div id="loader">CONNECTING TO DATABASE</div>
+  <div id="grid"></div>
+</main>
+</body>
+</html>
