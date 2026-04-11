@@ -6,39 +6,66 @@
 <title>Execute Logs</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
 
-<!-- Firebase SDKs -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, onValue, query, limitToLast, orderByKey } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  import { getDatabase, ref, onValue, query, limitToLast, orderByKey, remove, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-  // ── REPLACE THESE WITH YOUR FIREBASE CONFIG ──
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyD6hedvjGoaKqKv3V4voqkrleW8tPeOxkc",
-  authDomain: "okok9k-7b233.firebaseapp.com",
-  databaseURL: "https://okok9k-7b233-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "okok9k-7b233",
-  storageBucket: "okok9k-7b233.firebasestorage.app",
-  messagingSenderId: "739334555707",
-  appId: "1:739334555707:web:ca172dae3f8c3ab298b41e",
-  measurementId: "G-F01BX48W8F"
-};
+  const firebaseConfig = {
+    apiKey:            "YOUR_API_KEY",
+    authDomain:        "YOUR_PROJECT.firebaseapp.com",
+    databaseURL:       "https://okok9k-7b233-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:         "okok9k-7b233",
+    storageBucket:     "okok9k-7b233.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId:             "YOUR_APP_ID"
+  };
 
   const app = initializeApp(firebaseConfig);
   const db  = getDatabase(app);
 
-  function timeAgo(ts) {
-    const diff = Math.floor((Date.now() - ts) / 1000);
-    if (diff < 60)  return diff + "s ago";
-    if (diff < 3600) return Math.floor(diff/60) + "m ago";
-    return Math.floor(diff/3600) + "h ago";
+  // ── AUTO CLEAR LOGS OLDER THAN 1 WEEK ──
+  async function autoClearOldLogs() {
+    const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const snap = await get(ref(db, "logs"));
+    if (!snap.exists()) return;
+    snap.forEach(child => {
+      if ((child.val().timestamp || 0) < oneWeekAgo) {
+        remove(ref(db, "logs/" + child.key));
+      }
+    });
   }
 
+  function timeAgo(ts) {
+    const diff = Math.floor((Date.now() - ts) / 1000);
+    if (diff < 60)   return diff + "s ago";
+    if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+    return Math.floor(diff / 3600) + "h ago";
+  }
+
+  window._copyJobId = function(jobId, shortId) {
+    navigator.clipboard.writeText(jobId).then(() => {
+      const btn = document.getElementById("copy-" + shortId);
+      if (btn) { btn.textContent = "COPIED!"; setTimeout(() => btn.textContent = "COPY JOB ID", 1500); }
+    });
+  };
+
   function renderCard(data) {
+    const jobId   = data.jobId || "";
+    const placeId = data.placeId || "";
+    const shortId = jobId.substring(0, 8);
+    const joinLink = placeId
+      ? `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${jobId}`
+      : null;
+    const initials = (data.displayName || "?")[0].toUpperCase();
+
     return `
-      <div class="card" style="animation: slideIn 0.4s ease">
+      <div class="card">
         <div class="card-header">
-          <img src="${data.avatarUrl || ''}" class="avatar" onerror="this.style.display='none'"/>
+          <div class="avatar-wrap">
+            <img src="${data.avatarUrl || ''}" class="avatar"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+            <div class="avatar-fallback">${initials}</div>
+          </div>
           <div class="card-title">
             <span class="display-name">${data.displayName || '?'}</span>
             <span class="username">@${data.username || '?'}</span>
@@ -49,7 +76,13 @@ const firebaseConfig = {
           <div class="field"><span class="label">EXECUTOR</span><span class="value exec">${data.executor || 'Unknown'}</span></div>
           <div class="field"><span class="label">GAME</span><span class="value">${data.game || 'Unknown'}</span></div>
           <div class="field"><span class="label">REGION</span><span class="value">${data.region || 'Unknown'}</span></div>
-          <div class="field"><span class="label">JOB ID</span><span class="value mono">${(data.jobId || '').substring(0,16)}...</span></div>
+          <div class="field"><span class="label">JOB ID</span><span class="value mono" title="${jobId}">${shortId}...</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn-copy" id="copy-${shortId}" onclick="window._copyJobId('${jobId}','${shortId}')">COPY JOB ID</button>
+          ${joinLink
+            ? `<a class="btn-join" href="${joinLink}" target="_blank">JOIN SERVER →</a>`
+            : `<span class="btn-join disabled">NO PLACE ID</span>`}
         </div>
         <a class="profile-link" href="https://www.roblox.com/users/${data.userId}/profile" target="_blank">VIEW PROFILE →</a>
       </div>
@@ -57,21 +90,41 @@ const firebaseConfig = {
   }
 
   function init() {
-    const logsRef  = query(ref(db, "logs"), orderByKey(), limitToLast(50));
-    const grid     = document.getElementById("grid");
-    const counter  = document.getElementById("counter");
-    const loader   = document.getElementById("loader");
+    autoClearOldLogs();
 
-    onValue(logsRef, (snapshot) => {
+    const grid    = document.getElementById("grid");
+    const counter = document.getElementById("counter");
+    const loader  = document.getElementById("loader");
+    const search  = document.getElementById("search");
+    let allEntries = [];
+
+    function renderFiltered(q) {
+      q = q.toLowerCase().trim();
+      const filtered = q
+        ? allEntries.filter(d =>
+            (d.displayName || "").toLowerCase().includes(q) ||
+            (d.username || "").toLowerCase().includes(q))
+        : allEntries;
+      counter.textContent = filtered.length;
+      grid.innerHTML = filtered.length
+        ? filtered.map(renderCard).join("")
+        : '<p class="empty">No results found.</p>';
+    }
+
+    search.addEventListener("input", e => renderFiltered(e.target.value));
+
+    const logsRef = query(ref(db, "logs"), orderByKey(), limitToLast(50));
+    onValue(logsRef, snapshot => {
       loader.style.display = "none";
       const val = snapshot.val();
       if (!val) {
+        allEntries = [];
         grid.innerHTML = '<p class="empty">No executions logged yet.</p>';
+        counter.textContent = 0;
         return;
       }
-      const entries = Object.values(val).reverse();
-      counter.textContent = entries.length;
-      grid.innerHTML = entries.map(renderCard).join("");
+      allEntries = Object.values(val).reverse();
+      renderFiltered(search.value);
     });
   }
 
@@ -99,18 +152,11 @@ const firebaseConfig = {
     min-height: 100vh;
   }
 
-  /* scanline overlay */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.07) 2px,
-      rgba(0,0,0,0.07) 4px
-    );
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
     pointer-events: none;
     z-index: 999;
   }
@@ -124,91 +170,41 @@ const firebaseConfig = {
     background: linear-gradient(90deg, #0f1318 0%, #0d1520 100%);
   }
 
-  .logo {
-    width: 10px; height: 10px;
-    background: var(--accent);
-    border-radius: 50%;
-    box-shadow: 0 0 12px var(--accent);
-    animation: pulse 2s infinite;
-  }
+  .logo { width: 10px; height: 10px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 12px var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
-  }
-
-  header h1 {
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: #fff;
-  }
-
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; color: #fff; }
   header h1 span { color: var(--accent); }
 
-  .badge {
-    margin-left: auto;
-    background: var(--blue2);
-    color: var(--accent);
+  .badge { margin-left: auto; background: var(--blue2); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; padding: 4px 12px; border-radius: 2px; border: 1px solid var(--blue); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
+
+  .section-label { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--muted); letter-spacing: 3px; margin-bottom: 12px; text-transform: uppercase; }
+  .section-label span { color: var(--accent); margin-left: 8px; }
+
+  .search-wrap { margin-bottom: 20px; }
+  .search-bar {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    color: var(--text);
     font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    padding: 4px 12px;
+    font-size: 0.85rem;
+    padding: 10px 16px;
     border-radius: 2px;
-    border: 1px solid var(--blue);
+    outline: none;
+    transition: border-color 0.2s;
+    letter-spacing: 1px;
   }
+  .search-bar::placeholder { color: var(--muted); }
+  .search-bar:focus { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,229,255,0.15); }
 
-  main {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 32px 20px;
-  }
+  #loader { text-align: center; padding: 60px; font-family: 'Share Tech Mono', monospace; color: var(--muted); letter-spacing: 2px; font-size: 0.8rem; }
+  .empty { text-align: center; padding: 60px; color: var(--muted); font-family: 'Share Tech Mono', monospace; }
 
-  .section-label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-    letter-spacing: 3px;
-    margin-bottom: 20px;
-    text-transform: uppercase;
-  }
-
-  .section-label span {
-    color: var(--accent);
-    margin-left: 8px;
-  }
-
-  #loader {
-    text-align: center;
-    padding: 60px;
-    font-family: 'Share Tech Mono', monospace;
-    color: var(--muted);
-    letter-spacing: 2px;
-    font-size: 0.8rem;
-  }
-
-  #loader::after {
-    content: '';
-    display: inline-block;
-    width: 8px; height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    margin-left: 8px;
-    animation: pulse 0.8s infinite;
-  }
-
-  .empty {
-    text-align: center;
-    padding: 60px;
-    color: var(--muted);
-    font-family: 'Share Tech Mono', monospace;
-  }
-
-  #grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
-  }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 
   .card {
     background: var(--surface);
@@ -217,122 +213,64 @@ const firebaseConfig = {
     border-radius: 4px;
     padding: 20px;
     transition: border-color 0.2s, transform 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 60px;
-    background: linear-gradient(180deg, rgba(66,165,245,0.06) 0%, transparent 100%);
-    pointer-events: none;
-  }
-
-  .card:hover {
-    border-top-color: var(--accent);
-    transform: translateY(-2px);
-  }
-
-  .card-header {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
+    flex-direction: column;
+    gap: 14px;
   }
+  .card:hover { border-top-color: var(--accent); transform: translateY(-2px); }
 
-  .avatar {
+  .card-header { display: flex; align-items: center; gap: 12px; }
+
+  .avatar-wrap { position: relative; width: 44px; height: 44px; flex-shrink: 0; }
+  .avatar { width: 44px; height: 44px; border-radius: 4px; border: 2px solid var(--blue); object-fit: cover; display: block; }
+  .avatar-fallback {
+    display: none;
     width: 44px; height: 44px;
     border-radius: 4px;
     border: 2px solid var(--blue);
-    object-fit: cover;
     background: var(--blue2);
-  }
-
-  .card-title {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .display-name {
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
     font-weight: 700;
-    font-size: 1rem;
     color: #fff;
-    letter-spacing: 1px;
   }
 
-  .username {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--muted);
-  }
+  .card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .display-name { font-weight: 700; font-size: 1rem; color: #fff; letter-spacing: 1px; }
+  .username { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+  .time-ago { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; color: var(--muted); align-self: flex-start; white-space: nowrap; }
 
-  .time-ago {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--muted);
-    align-self: flex-start;
-  }
-
-  .card-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.6rem;
-    color: var(--muted);
-    letter-spacing: 2px;
-  }
-
-  .value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
+  .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .label { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; color: var(--muted); letter-spacing: 2px; }
+  .value { font-size: 0.9rem; font-weight: 600; color: var(--text); }
   .value.exec { color: var(--accent); }
-  .value.mono {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.72rem;
-    color: var(--muted);
+  .value.mono { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+
+  .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .btn-copy, .btn-join {
+    display: block; text-align: center; padding: 8px 4px;
+    border-radius: 2px; font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 1.5px; cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    text-decoration: none;
   }
+  .btn-copy { background: transparent; border: 1px solid var(--muted); color: var(--text); font-family: 'Rajdhani', sans-serif; }
+  .btn-copy:hover { background: var(--muted); color: #fff; }
+  .btn-join { background: var(--blue2); border: 1px solid var(--blue); color: var(--accent); }
+  .btn-join:hover { background: var(--blue); color: #fff; }
+  .btn-join.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
 
   .profile-link {
-    display: block;
-    text-align: center;
-    padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: var(--blue);
-    text-decoration: none;
+    display: block; text-align: center; padding: 8px;
+    border: 1px solid var(--border); border-radius: 2px;
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 2px;
+    color: var(--blue); text-decoration: none;
     transition: background 0.2s, color 0.2s;
   }
-
-  .profile-link:hover {
-    background: var(--blue);
-    color: #fff;
-  }
-
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+  .profile-link:hover { background: var(--blue); color: #fff; }
 </style>
 </head>
 <body>
@@ -343,6 +281,9 @@ const firebaseConfig = {
 </header>
 <main>
   <div class="section-label">RECENT EXECUTIONS <span>▮</span></div>
+  <div class="search-wrap">
+    <input id="search" class="search-bar" type="text" placeholder="Search by name or username..." autocomplete="off" spellcheck="false"/>
+  </div>
   <div id="loader">CONNECTING TO DATABASE</div>
   <div id="grid"></div>
 </main>
