@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Execute Logs</title>
+
+<!-- Discord / Open Graph embed -->
+<meta property="og:title" content="Execute Logs" />
+<meta property="og:description" content="Live Roblox executor detection dashboard. See who's running scripts in real time." />
+<meta property="og:image" content="https://i.imgur.com/4M34hi2.png" />
+<meta property="og:url" content="https://nanihs201992-droid.github.io/shjkd/" />
+<meta property="og:type" content="website" />
+<meta name="theme-color" content="#42A5F5" />
+
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
 
 <script type="module">
@@ -23,15 +32,13 @@
   const app = initializeApp(firebaseConfig);
   const db  = getDatabase(app);
 
-  // ── AUTO CLEAR LOGS OLDER THAN 1 WEEK ──
   async function autoClearOldLogs() {
     const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
     const snap = await get(ref(db, "logs"));
     if (!snap.exists()) return;
     snap.forEach(child => {
-      if ((child.val().timestamp || 0) < oneWeekAgo) {
+      if ((child.val().timestamp || 0) < oneWeekAgo)
         remove(ref(db, "logs/" + child.key));
-      }
     });
   }
 
@@ -50,9 +57,9 @@
   };
 
   function renderCard(data) {
-    const jobId   = data.jobId || "";
-    const placeId = data.placeId || "";
-    const shortId = jobId.substring(0, 8);
+    const jobId    = data.jobId || "";
+    const placeId  = data.placeId || "";
+    const shortId  = jobId.substring(0, 8);
     const joinLink = placeId
       ? `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${jobId}`
       : null;
@@ -96,24 +103,45 @@
     const counter = document.getElementById("counter");
     const loader  = document.getElementById("loader");
     const search  = document.getElementById("search");
+    const regionSelect = document.getElementById("region-filter");
     let allEntries = [];
 
-    function renderFiltered(q) {
-      q = q.toLowerCase().trim();
-      const filtered = q
-        ? allEntries.filter(d =>
-            (d.displayName || "").toLowerCase().includes(q) ||
-            (d.username || "").toLowerCase().includes(q))
-        : allEntries;
+    function renderFiltered() {
+      const q      = search.value.toLowerCase().trim();
+      const region = regionSelect.value.toLowerCase();
+
+      let filtered = allEntries;
+      if (q) filtered = filtered.filter(d =>
+        (d.displayName || "").toLowerCase().includes(q) ||
+        (d.username || "").toLowerCase().includes(q)
+      );
+      if (region) filtered = filtered.filter(d =>
+        (d.region || "").toLowerCase().includes(region)
+      );
+
       counter.textContent = filtered.length;
       grid.innerHTML = filtered.length
         ? filtered.map(renderCard).join("")
         : '<p class="empty">No results found.</p>';
     }
 
-    search.addEventListener("input", e => renderFiltered(e.target.value));
+    function populateRegions(entries) {
+      const regions = [...new Set(entries.map(d => d.region).filter(Boolean))].sort();
+      const current = regionSelect.value;
+      regionSelect.innerHTML = '<option value="">ALL REGIONS</option>';
+      regions.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r;
+        opt.textContent = r;
+        if (r === current) opt.selected = true;
+        regionSelect.appendChild(opt);
+      });
+    }
 
-    const logsRef = query(ref(db, "logs"), orderByKey(), limitToLast(50));
+    search.addEventListener("input", renderFiltered);
+    regionSelect.addEventListener("change", renderFiltered);
+
+    const logsRef = query(ref(db, "logs"), orderByKey(), limitToLast(200));
     onValue(logsRef, snapshot => {
       loader.style.display = "none";
       const val = snapshot.val();
@@ -121,10 +149,12 @@
         allEntries = [];
         grid.innerHTML = '<p class="empty">No executions logged yet.</p>';
         counter.textContent = 0;
+        regionSelect.innerHTML = '<option value="">ALL REGIONS</option>';
         return;
       }
       allEntries = Object.values(val).reverse();
-      renderFiltered(search.value);
+      populateRegions(allEntries);
+      renderFiltered();
     });
   }
 
@@ -145,28 +175,19 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Rajdhani', sans-serif;
-    min-height: 100vh;
-  }
+  body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; min-height: 100vh; }
 
   body::before {
     content: '';
-    position: fixed;
-    inset: 0;
+    position: fixed; inset: 0;
     background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
-    pointer-events: none;
-    z-index: 999;
+    pointer-events: none; z-index: 999;
   }
 
   header {
     border-bottom: 1px solid var(--border);
     padding: 20px 32px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    display: flex; align-items: center; gap: 16px;
     background: linear-gradient(90deg, #0f1318 0%, #0d1520 100%);
   }
 
@@ -176,16 +197,16 @@
   header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; color: #fff; }
   header h1 span { color: var(--accent); }
 
-  .badge { margin-left: auto; background: var(--blue2); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; padding: 4px 12px; border-radius: 2px; border: 1px solid var(--blue); }
+  .badge { margin-left: auto; background: var(--blue2); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; padding: 4px 12px; border-radius: 2px; border: 1px solid var(--blue); white-space: nowrap; }
 
   main { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
 
   .section-label { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--muted); letter-spacing: 3px; margin-bottom: 12px; text-transform: uppercase; }
   .section-label span { color: var(--accent); margin-left: 8px; }
 
-  .search-wrap { margin-bottom: 20px; }
-  .search-bar {
-    width: 100%;
+  .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+
+  .search-bar, .region-select {
     background: var(--surface);
     border: 1px solid var(--border);
     border-left: 3px solid var(--accent);
@@ -198,8 +219,11 @@
     transition: border-color 0.2s;
     letter-spacing: 1px;
   }
+
+  .search-bar { flex: 1; min-width: 200px; }
+  .region-select { min-width: 180px; cursor: pointer; }
   .search-bar::placeholder { color: var(--muted); }
-  .search-bar:focus { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,229,255,0.15); }
+  .search-bar:focus, .region-select:focus { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,229,255,0.15); }
 
   #loader { text-align: center; padding: 60px; font-family: 'Share Tech Mono', monospace; color: var(--muted); letter-spacing: 2px; font-size: 0.8rem; }
   .empty { text-align: center; padding: 60px; color: var(--muted); font-family: 'Share Tech Mono', monospace; }
@@ -207,38 +231,26 @@
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 
   .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-top: 2px solid var(--blue);
-    border-radius: 4px;
-    padding: 20px;
+    background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--blue);
+    border-radius: 4px; padding: 20px;
     transition: border-color 0.2s, transform 0.2s;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    display: flex; flex-direction: column; gap: 14px;
   }
   .card:hover { border-top-color: var(--accent); transform: translateY(-2px); }
 
   .card-header { display: flex; align-items: center; gap: 12px; }
 
-  .avatar-wrap { position: relative; width: 44px; height: 44px; flex-shrink: 0; }
+  .avatar-wrap { width: 44px; height: 44px; flex-shrink: 0; }
   .avatar { width: 44px; height: 44px; border-radius: 4px; border: 2px solid var(--blue); object-fit: cover; display: block; }
   .avatar-fallback {
-    display: none;
-    width: 44px; height: 44px;
-    border-radius: 4px;
-    border: 2px solid var(--blue);
-    background: var(--blue2);
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: #fff;
+    display: none; width: 44px; height: 44px; border-radius: 4px; border: 2px solid var(--blue);
+    background: var(--blue2); align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 700; color: #fff;
   }
 
-  .card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-  .display-name { font-weight: 700; font-size: 1rem; color: #fff; letter-spacing: 1px; }
-  .username { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+  .card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+  .display-name { font-weight: 700; font-size: 1rem; color: #fff; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .username { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .time-ago { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; color: var(--muted); align-self: flex-start; white-space: nowrap; }
 
   .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -251,11 +263,9 @@
   .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
   .btn-copy, .btn-join {
-    display: block; text-align: center; padding: 8px 4px;
-    border-radius: 2px; font-size: 0.7rem; font-weight: 700;
-    letter-spacing: 1.5px; cursor: pointer;
-    transition: background 0.2s, color 0.2s;
-    text-decoration: none;
+    display: block; text-align: center; padding: 8px 4px; border-radius: 2px;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 1.5px;
+    cursor: pointer; transition: background 0.2s, color 0.2s; text-decoration: none;
   }
   .btn-copy { background: transparent; border: 1px solid var(--muted); color: var(--text); font-family: 'Rajdhani', sans-serif; }
   .btn-copy:hover { background: var(--muted); color: #fff; }
@@ -267,8 +277,7 @@
     display: block; text-align: center; padding: 8px;
     border: 1px solid var(--border); border-radius: 2px;
     font-size: 0.75rem; font-weight: 700; letter-spacing: 2px;
-    color: var(--blue); text-decoration: none;
-    transition: background 0.2s, color 0.2s;
+    color: var(--blue); text-decoration: none; transition: background 0.2s, color 0.2s;
   }
   .profile-link:hover { background: var(--blue); color: #fff; }
 </style>
@@ -281,8 +290,11 @@
 </header>
 <main>
   <div class="section-label">RECENT EXECUTIONS <span>▮</span></div>
-  <div class="search-wrap">
-    <input id="search" class="search-bar" type="text" placeholder="Search by name or username..." autocomplete="off" spellcheck="false"/>
+  <div class="filters">
+    <input id="search" class="search-bar" type="text" placeholder="Search name or username..." autocomplete="off" spellcheck="false"/>
+    <select id="region-filter" class="region-select">
+      <option value="">ALL REGIONS</option>
+    </select>
   </div>
   <div id="loader">CONNECTING TO DATABASE</div>
   <div id="grid"></div>
