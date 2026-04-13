@@ -110,6 +110,9 @@ function renderCard(data, viewMode) {
         </div>
         <span class="time-badge">${timeAgo(data.timestamp||Date.now())}</span>
       </div>
+      <div class="status-badge ${data.left ? 'left' : 'online'}">
+        ${data.left ? '🔴 Left Server' : '🟢 In Server'}
+      </div>
       <div class="card-fields">
         <div class="field"><span class="label">Executor</span><span class="value" style="color:${color}">${data.executor||'?'}</span></div>
         <div class="field"><span class="label">Game</span><span class="value">${data.game||'?'}</span></div>
@@ -262,7 +265,7 @@ function init() {
       grid.className = "list-view";
       grid.innerHTML = filtered.length ? `
         <div class="list-header">
-          <span></span><span>Player</span><span>Executor</span><span>Game</span><span>Region</span><span>Time</span><span>Actions</span>
+          <span></span><span>Player</span><span>Executor</span><span>Game</span><span>Region</span><span>Time</span><span>Status</span><span>Actions</span>
         </div>
         ${filtered.map(d=>renderCard(d,"list")).join("")}` : '<p class="empty">No results found.</p>';
     } else {
@@ -485,7 +488,7 @@ main { max-width:1140px;margin:0 auto;padding:16px 14px; }
 
 /* ── LIST VIEW ── */
 .list-view { display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden; }
-.list-header,.list-row { display:grid;grid-template-columns:36px 1fr .8fr 1fr .9fr .6fr auto;gap:10px;align-items:center;padding:9px 12px; }
+.list-header,.list-row { display:grid;grid-template-columns:36px 1fr .8fr 1fr .9fr .6fr 8px auto;gap:10px;align-items:center;padding:9px 12px; }
 .list-header { background:var(--field-bg);font-size:.62rem;font-weight:700;color:var(--text-sub);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border); }
 .list-row { background:var(--surface);border-bottom:1px solid var(--border);transition:background 0.15s; }
 .list-row:last-child { border-bottom:none; }
@@ -499,6 +502,26 @@ main { max-width:1140px;margin:0 auto;padding:16px 14px; }
 .btn-xs:hover { border-color:var(--blue);color:var(--blue); }
 .btn-xs.blue { background:var(--blue);color:#fff;border-color:var(--blue); }
 .btn-xs.blue:hover { opacity:.9; }
+
+/* ── STATUS BADGE ── */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .68rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  width: fit-content;
+}
+.status-badge.online { background: #dcfce7; color: #16a34a; }
+.status-badge.left   { background: #fee2e2; color: #dc2626; }
+[data-theme="dark"] .status-badge.online { background: #14532d40; color: #4ade80; }
+[data-theme="dark"] .status-badge.left   { background: #7f1d1d40; color: #f87171; }
+
+.status-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+.status-dot.online { background:#22c55e;box-shadow:0 0 4px #22c55e; }
+.status-dot.left   { background:#ef4444; }
 
 /* ── RESPONSIVE ── */
 @media(max-width:640px){
