@@ -283,11 +283,7 @@ function init() {
     };
     fill(regionSel, countries, "All Regions");
     fill(execSel, execs, "All Executors");
-    fill(games, games, "All Games");
-    // game filter
-    const curGame = gameSel.value;
-    gameSel.innerHTML = `<option value="">All Games</option>`;
-    games.forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; if(v===curGame)o.selected=true; gameSel.appendChild(o); });
+    fill(gameSel, games, "All Games");
   }
 
   function updateStats(entries) {
