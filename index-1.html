@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Execute Logs</title>
+<meta property="og:title" content="Execute Logs" />
+<meta property="og:description" content="Live Roblox executor detection dashboard." />
+<meta property="og:image" content="https://i.imgur.com/4M34hi2.png" />
+<meta property="og:url" content="https://nanihs201992-droid.github.io/shjkd/" />
+<meta name="theme-color" content="#2563eb" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, query, limitToLast, orderByKey, remove, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  databaseURL:       "https://okok9k-7b233-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "okok9k-7b233",
+  storageBucket:     "okok9k-7b233.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ── AUTO CLEAR 1 WEEK ──
+async function autoClearOldLogs() {
+  const oneWeekAgo = Date.now() - 7*24*60*60*1000;
+  const snap = await get(ref(db, "logs"));
+  if (!snap.exists()) return;
+  snap.forEach(c => { if ((c.val().timestamp||0) < oneWeekAgo) remove(ref(db,"logs/"+c.key)); });
+}
+
+// ── HELPERS ──
+function timeAgo(ts) {
+  const d = Math.floor((Date.now()-ts)/1000);
+  if (d<60) return d+"s ago";
+  if (d<3600) return Math.floor(d/60)+"m ago";
+  if (d<86400) return Math.floor(d/3600)+"h ago";
+  return Math.floor(d/86400)+"d ago";
+}
+
+function getCountry(r) {
+  if (!r) return "";
+  const p = r.split(",");
+  return p.length>1 ? p[p.length-1].trim() : r.trim();
+}
+
+const COLORS = ["#2563eb","#7c3aed","#db2777","#059669","#d97706","#dc2626","#0891b2"];
+
+// ── SOUND PING ──
+let audioCtx = null;
+function playPing() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.frequency.setValueAtTime(880, audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime+0.3);
+    g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.3);
+    o.start(); o.stop(audioCtx.currentTime+0.3);
+  } catch(e){}
+}
+
+// ── RENDER CARD ──
+function renderCard(data, viewMode) {
+  const jobId   = data.jobId||"";
+  const placeId = data.placeId||"";
+  const shortId = jobId.substring(0,8);
+  const joinLink = placeId ? `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${jobId}` : null;
+  const initials = (data.displayName||"?")[0].toUpperCase();
+  const color = COLORS[(data.userId||0) % COLORS.length];
+
+  if (viewMode === "list") {
+    return `
+      <div class="list-row">
+        <div class="list-avatar" style="background:${color}20;color:${color};border-color:${color}40">
+          <img src="${data.avatarUrl||''}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block"/>
+          <span style="display:none;align-items:center;justify-content:center;width:100%;height:100%">${initials}</span>
+        </div>
+        <div class="list-name">
+          <span class="display-name">${data.displayName||'?'}</span>
+          <span class="username">@${data.username||'?'}</span>
+        </div>
+        <span class="list-exec" style="color:${color}">${data.executor||'?'}</span>
+        <span class="list-game">${data.game||'?'}</span>
+        <span class="list-region">${data.region||'?'}</span>
+        <span class="list-time">${timeAgo(data.timestamp||Date.now())}</span>
+        <div class="list-actions">
+          <button class="btn-xs" id="copy-${shortId}" onclick="window._copy('${jobId}','${shortId}')">Copy</button>
+          ${joinLink ? `<a class="btn-xs blue" href="${joinLink}" target="_blank">Join</a>` : ""}
+          <a class="btn-xs" href="https://www.roblox.com/users/${data.userId}/profile" target="_blank">Profile</a>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div class="avatar-wrap">
+          <img src="${data.avatarUrl||''}" class="avatar" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/>
+          <div class="avatar-fallback" style="background:${color}20;color:${color};border-color:${color}40">${initials}</div>
+        </div>
+        <div class="card-title">
+          <span class="display-name">${data.displayName||'?'}</span>
+          <span class="username">@${data.username||'?'}</span>
+        </div>
+        <span class="time-badge">${timeAgo(data.timestamp||Date.now())}</span>
+      </div>
+      <div class="card-fields">
+        <div class="field"><span class="label">Executor</span><span class="value" style="color:${color}">${data.executor||'?'}</span></div>
+        <div class="field"><span class="label">Game</span><span class="value">${data.game||'?'}</span></div>
+        <div class="field"><span class="label">Region</span><span class="value">${data.region||'?'}</span></div>
+        <div class="field"><span class="label">Job ID</span><span class="value mono" title="${jobId}">${shortId}…</span></div>
+      </div>
+      <div class="card-actions">
+        <button class="btn-ghost" id="copy-${shortId}" onclick="window._copy('${jobId}','${shortId}')">Copy Job ID</button>
+        ${joinLink ? `<a class="btn-primary" href="${joinLink}" target="_blank">Join Server →</a>` : `<span class="btn-primary disabled">No Place ID</span>`}
+      </div>
+      <a class="btn-outline" href="https://www.roblox.com/users/${data.userId}/profile" target="_blank">View Profile →</a>
+    </div>`;
+}
+
+// ── COPY ──
+window._copy = function(jobId, shortId) {
+  navigator.clipboard.writeText(jobId).then(() => {
+    const b = document.getElementById("copy-"+shortId);
+    if (b) { const old=b.textContent; b.textContent="Copied!"; setTimeout(()=>b.textContent=old,1500); }
+  });
+};
+
+// ── EXPORT CSV ──
+window._exportCSV = function(entries) {
+  const rows = [["DisplayName","Username","Executor","Game","Region","JobId","PlaceId","Timestamp"]];
+  entries.forEach(d => rows.push([d.displayName,d.username,d.executor,d.game,d.region,d.jobId,d.placeId,new Date(d.timestamp).toISOString()]));
+  const csv = rows.map(r=>r.map(v=>`"${(v||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = "data:text/csv;charset=utf-8,"+encodeURIComponent(csv);
+  a.download = "execute_logs.csv";
+  a.click();
+};
+
+// ── CHARTS ──
+let execChart = null, hourChart = null;
+function updateCharts(entries) {
+  const execCount = {}, countryCount = {}, hourCount = {};
+  for (let h=0;h<24;h++) hourCount[h]=0;
+  const now = Date.now(), oneDay = 86400000;
+
+  entries.forEach(d => {
+    const ex = d.executor||"Unknown";
+    execCount[ex] = (execCount[ex]||0)+1;
+    const c = getCountry(d.region);
+    if (c) countryCount[c] = (countryCount[c]||0)+1;
+    if (d.timestamp && now-d.timestamp < oneDay) {
+      const h = new Date(d.timestamp).getHours();
+      hourCount[h]++;
+    }
+  });
+
+  // Executor chart
+  const exLabels = Object.keys(execCount).sort((a,b)=>execCount[b]-execCount[a]).slice(0,8);
+  const exData   = exLabels.map(k=>execCount[k]);
+  const ctx1 = document.getElementById("execChart");
+  if (ctx1) {
+    if (execChart) execChart.destroy();
+    execChart = new Chart(ctx1, {
+      type:"bar",
+      data:{ labels:exLabels, datasets:[{ data:exData, backgroundColor:COLORS, borderRadius:4 }] },
+      options:{ plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:"var(--text-muted)",font:{size:10}}}, y:{ticks:{color:"var(--text-muted)",font:{size:10}},grid:{color:"var(--border)"}} }, animation:false }
+    });
+  }
+
+  // Hour chart
+  const hLabels = Array.from({length:24},(_,i)=>i+"h");
+  const hData   = Array.from({length:24},(_,i)=>hourCount[i]);
+  const ctx2 = document.getElementById("hourChart");
+  if (ctx2) {
+    if (hourChart) hourChart.destroy();
+    hourChart = new Chart(ctx2, {
+      type:"line",
+      data:{ labels:hLabels, datasets:[{ data:hData, borderColor:"#2563eb", backgroundColor:"rgba(37,99,235,0.08)", fill:true, tension:0.4, pointRadius:2 }] },
+      options:{ plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:"var(--text-muted)",font:{size:10}}}, y:{ticks:{color:"var(--text-muted)",font:{size:10}},grid:{color:"var(--border)"}} }, animation:false }
+    });
+  }
+
+  // Top country
+  const topCountry = Object.keys(countryCount).sort((a,b)=>countryCount[b]-countryCount[a])[0]||"—";
+  const el = document.getElementById("top-country");
+  if (el) el.textContent = topCountry;
+}
+
+// ── INIT ──
+function init() {
+  autoClearOldLogs();
+
+  const grid         = document.getElementById("grid");
+  const counter      = document.getElementById("counter");
+  const loader       = document.getElementById("loader");
+  const search       = document.getElementById("search");
+  const regionSel    = document.getElementById("region-filter");
+  const execSel      = document.getElementById("exec-filter");
+  const gameSel      = document.getElementById("game-filter");
+  const sortSel      = document.getElementById("sort-sel");
+  const statToday    = document.getElementById("stat-today");
+  const statWeek     = document.getElementById("stat-week");
+  const statHour     = document.getElementById("stat-hour");
+  const recentLabel  = document.getElementById("recent-label");
+
+  let allEntries = [];
+  let viewMode   = "grid";
+  let prevCount  = 0;
+  let soundOn    = true;
+
+  // Timestamp auto-refresh
+  setInterval(() => {
+    document.querySelectorAll(".time-badge").forEach(el => {
+      const ts = parseInt(el.dataset.ts);
+      if (ts) el.textContent = timeAgo(ts);
+    });
+  }, 30000);
+
+  // Dark mode
+  document.getElementById("theme-toggle").addEventListener("click", () => {
+    const html = document.documentElement;
+    html.dataset.theme = html.dataset.theme==="light" ? "dark" : "light";
+    document.getElementById("theme-toggle").textContent = html.dataset.theme==="dark" ? "☀️" : "🌙";
+  });
+
+  // Sound toggle
+  document.getElementById("sound-toggle").addEventListener("click", () => {
+    soundOn = !soundOn;
+    document.getElementById("sound-toggle").textContent = soundOn ? "🔔" : "🔕";
+  });
+
+  // View toggle
+  document.getElementById("view-grid").addEventListener("click", () => { viewMode="grid"; renderFiltered(); document.getElementById("view-grid").classList.add("active"); document.getElementById("view-list").classList.remove("active"); });
+  document.getElementById("view-list").addEventListener("click", () => { viewMode="list"; renderFiltered(); document.getElementById("view-list").classList.add("active"); document.getElementById("view-grid").classList.remove("active"); });
+
+  // Export
+  document.getElementById("export-btn").addEventListener("click", () => window._exportCSV(allEntries));
+
+  function renderFiltered() {
+    const q      = search.value.toLowerCase().trim();
+    const region = regionSel.value.toLowerCase();
+    const exec   = execSel.value.toLowerCase();
+    const game   = gameSel.value.toLowerCase();
+    const sort   = sortSel.value;
+
+    let filtered = [...allEntries];
+    if (q) filtered = filtered.filter(d => (d.displayName||"").toLowerCase().includes(q)||(d.username||"").toLowerCase().includes(q));
+    if (region) filtered = filtered.filter(d => getCountry(d.region||"").toLowerCase().includes(region));
+    if (exec)   filtered = filtered.filter(d => (d.executor||"").toLowerCase().includes(exec));
+    if (game)   filtered = filtered.filter(d => (d.game||"").toLowerCase().includes(game));
+    if (sort==="oldest") filtered.reverse();
+
+    counter.textContent = filtered.length;
+    if (viewMode==="list") {
+      grid.className = "list-view";
+      grid.innerHTML = filtered.length ? `
+        <div class="list-header">
+          <span></span><span>Player</span><span>Executor</span><span>Game</span><span>Region</span><span>Time</span><span>Actions</span>
+        </div>
+        ${filtered.map(d=>renderCard(d,"list")).join("")}` : '<p class="empty">No results found.</p>';
+    } else {
+      grid.className = "grid-view";
+      grid.innerHTML = filtered.length ? filtered.map(d=>renderCard(d,"grid")).join("") : '<p class="empty">No results found.</p>';
+    }
+  }
+
+  function populateFilters(entries) {
+    const countries = [...new Set(entries.map(d=>getCountry(d.region)).filter(Boolean))].sort();
+    const execs     = [...new Set(entries.map(d=>d.executor).filter(Boolean))].sort();
+    const games     = [...new Set(entries.map(d=>d.game).filter(Boolean))].sort();
+
+    const fill = (sel, items, placeholder) => {
+      const cur = sel.value;
+      sel.innerHTML = `<option value="">${placeholder}</option>`;
+      items.forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; if(v===cur)o.selected=true; sel.appendChild(o); });
+    };
+    fill(regionSel, countries, "All Regions");
+    fill(execSel, execs, "All Executors");
+    fill(games, games, "All Games");
+    // game filter
+    const curGame = gameSel.value;
+    gameSel.innerHTML = `<option value="">All Games</option>`;
+    games.forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; if(v===curGame)o.selected=true; gameSel.appendChild(o); });
+  }
+
+  function updateStats(entries) {
+    const now=Date.now(), today=86400000, week=604800000, hour=3600000;
+    const todayCount = entries.filter(d=>now-(d.timestamp||0)<today).length;
+    const weekCount  = entries.length;
+    const hourCount  = entries.filter(d=>now-(d.timestamp||0)<hour).length;
+    if (statToday) statToday.textContent = todayCount;
+    if (statWeek)  statWeek.textContent  = weekCount;
+    if (statHour)  statHour.textContent  = hourCount;
+    if (recentLabel) recentLabel.textContent = hourCount > 0 ? `${hourCount} execution${hourCount>1?"s":""} in the last hour` : "No executions in the last hour";
+    updateCharts(entries);
+  }
+
+  [search,regionSel,execSel,gameSel,sortSel].forEach(el => el && el.addEventListener("change", renderFiltered));
+  search.addEventListener("input", renderFiltered);
+
+  const logsRef = query(ref(db,"logs"), orderByKey(), limitToLast(1000));
+  onValue(logsRef, snapshot => {
+    loader.style.display = "none";
+    const val = snapshot.val();
+    if (!val) {
+      allEntries=[];
+      grid.innerHTML='<p class="empty">No executions logged yet.</p>';
+      counter.textContent=0;
+      return;
+    }
+    const newEntries = Object.values(val).reverse();
+    if (soundOn && prevCount > 0 && newEntries.length > prevCount) playPing();
+    prevCount = newEntries.length;
+    allEntries = newEntries;
+    populateFilters(allEntries);
+    updateStats(allEntries);
+    renderFiltered();
+  });
+}
+
+window.addEventListener("DOMContentLoaded", init);
+</script>
+
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: #fff;
+  --border: #e5e7eb;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --text-sub: #9ca3af;
+  --blue: #2563eb;
+  --blue-light: #eff6ff;
+  --blue-border: #bfdbfe;
+  --field-bg: #f9fafb;
+  --shadow: rgba(0,0,0,0.06);
+}
+[data-theme="dark"] {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2a2d3a;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-sub: #64748b;
+  --blue: #3b82f6;
+  --blue-light: #1e3a5f20;
+  --blue-border: #1e40af;
+  --field-bg: #131620;
+  --shadow: rgba(0,0,0,0.3);
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 6px var(--shadow);
+}
+.logo-mark { width:28px;height:28px;background:var(--blue);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+.logo-mark svg { width:15px;height:15px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round; }
+.site-title { font-size:.9rem;font-weight:700;color:var(--text); }
+.site-title span { color:var(--blue); }
+.live-pill { display:flex;align-items:center;gap:5px;background:var(--blue-light);border:1px solid var(--blue-border);border-radius:20px;padding:3px 10px;font-size:.7rem;font-weight:600;color:var(--blue);margin-left:auto;white-space:nowrap; }
+.live-dot { width:6px;height:6px;background:#22c55e;border-radius:50%;animation:blink 1.5s infinite; }
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+.header-actions { display:flex;gap:6px;margin-left:8px; }
+.icon-btn { background:var(--field-bg);border:1px solid var(--border);border-radius:7px;padding:5px 8px;cursor:pointer;font-size:.8rem;transition:background 0.15s; }
+.icon-btn:hover { background:var(--border); }
+.icon-btn.active { background:var(--blue);border-color:var(--blue);color:#fff; }
+
+/* ── MAIN ── */
+main { max-width:1140px;margin:0 auto;padding:16px 14px; }
+
+/* ── STATS ROW ── */
+.stats-row { display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px; }
+.stat-card { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px; }
+.stat-label { font-size:.65rem;font-weight:600;color:var(--text-sub);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px; }
+.stat-value { font-size:1.3rem;font-weight:700;color:var(--text); }
+.stat-sub { font-size:.65rem;color:var(--text-sub);margin-top:2px; }
+
+/* ── RECENT LABEL ── */
+.recent-bar { font-size:.72rem;color:var(--text-muted);margin-bottom:10px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:6px; }
+.recent-bar::before { content:""; width:6px;height:6px;background:#f59e0b;border-radius:50%;flex-shrink:0; }
+
+/* ── CHARTS ── */
+.charts-row { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px; }
+.chart-card { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px; }
+.chart-title { font-size:.7rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px; }
+
+/* ── FILTERS ── */
+.filters { display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap; }
+.filter-input {
+  background:var(--surface);
+  border:1.5px solid var(--border);
+  border-radius:8px;
+  color:var(--text);
+  font-family:'DM Sans',sans-serif;
+  font-size:.8rem;
+  padding:8px 10px;
+  outline:none;
+  transition:border-color 0.2s,box-shadow 0.2s;
+  min-width:0;
+}
+.filter-input:focus { border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
+.filter-input::placeholder { color:var(--text-sub); }
+#search { flex:1;min-width:140px; }
+.filter-row-2 { display:flex;gap:8px;flex-wrap:wrap; }
+.filter-row-2 .filter-input { flex:1;min-width:110px; }
+
+/* ── TOOLBAR ── */
+.toolbar { display:flex;align-items:center;gap:8px;margin-bottom:12px; }
+.toolbar-label { font-size:.72rem;color:var(--text-muted); }
+.export-btn { margin-left:auto;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:6px 12px;font-size:.72rem;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all 0.15s;font-family:'DM Sans',sans-serif; }
+.export-btn:hover { border-color:var(--blue);color:var(--blue); }
+
+/* ── LOADER ── */
+#loader { text-align:center;padding:60px;color:var(--text-sub);font-size:.85rem; }
+.empty { text-align:center;padding:60px;color:var(--text-sub);font-size:.85rem;grid-column:1/-1; }
+
+/* ── GRID VIEW ── */
+.grid-view { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px; }
+
+/* ── CARD ── */
+.card {
+  background:var(--surface);
+  border:1.5px solid var(--border);
+  border-radius:12px;
+  padding:14px;
+  display:flex;flex-direction:column;gap:12px;
+  transition:box-shadow 0.2s,transform 0.2s,border-color 0.2s;
+  animation:fadeUp 0.25s ease both;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.card:hover { box-shadow:0 6px 20px var(--shadow);transform:translateY(-2px);border-color:var(--blue-border); }
+
+.card-header { display:flex;align-items:center;gap:10px; }
+.avatar-wrap { width:38px;height:38px;flex-shrink:0;border-radius:8px;overflow:hidden; }
+.avatar { width:38px;height:38px;object-fit:cover;display:block;border-radius:8px; }
+.avatar-fallback { display:none;width:38px;height:38px;border-radius:8px;border:2px solid;align-items:center;justify-content:center;font-size:.95rem;font-weight:700; }
+.card-title { flex:1;overflow:hidden; }
+.display-name { display:block;font-weight:700;font-size:.85rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.username { display:block;font-size:.68rem;color:var(--text-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.time-badge { font-size:.62rem;font-weight:500;background:var(--field-bg);color:var(--text-muted);padding:2px 7px;border-radius:20px;white-space:nowrap;flex-shrink:0;border:1px solid var(--border); }
+
+.card-fields { display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--field-bg);border-radius:8px;padding:10px; }
+.field { display:flex;flex-direction:column;gap:2px; }
+.label { font-size:.58rem;font-weight:600;color:var(--text-sub);text-transform:uppercase;letter-spacing:.5px; }
+.value { font-size:.75rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.value.mono { font-family:'DM Mono',monospace;font-size:.68rem;color:var(--text-muted); }
+
+.card-actions { display:grid;grid-template-columns:1fr 1fr;gap:6px; }
+.btn-ghost,.btn-primary,.btn-outline {
+  display:block;text-align:center;padding:7px 8px;border-radius:7px;
+  font-family:'DM Sans',sans-serif;font-size:.72rem;font-weight:600;
+  cursor:pointer;text-decoration:none;transition:all 0.15s;border:none;
+}
+.btn-ghost { background:var(--field-bg);color:var(--text-muted);border:1.5px solid var(--border); }
+.btn-ghost:hover { background:var(--border); }
+.btn-primary { background:var(--blue);color:#fff;border:1.5px solid var(--blue); }
+.btn-primary:hover { opacity:.9; }
+.btn-primary.disabled { opacity:.35;cursor:not-allowed;pointer-events:none; }
+.btn-outline { background:transparent;color:var(--blue);border:1.5px solid var(--blue-border);font-size:.7rem; }
+.btn-outline:hover { background:var(--blue-light); }
+
+/* ── LIST VIEW ── */
+.list-view { display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:10px;overflow:hidden; }
+.list-header,.list-row { display:grid;grid-template-columns:36px 1fr .8fr 1fr .9fr .6fr auto;gap:10px;align-items:center;padding:9px 12px; }
+.list-header { background:var(--field-bg);font-size:.62rem;font-weight:700;color:var(--text-sub);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border); }
+.list-row { background:var(--surface);border-bottom:1px solid var(--border);transition:background 0.15s; }
+.list-row:last-child { border-bottom:none; }
+.list-row:hover { background:var(--field-bg); }
+.list-avatar { width:32px;height:32px;border-radius:6px;overflow:hidden;border:1.5px solid;display:flex;flex-shrink:0; }
+.list-name { display:flex;flex-direction:column;overflow:hidden; }
+.list-exec,.list-game,.list-region,.list-time { font-size:.75rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.list-time { color:var(--text-muted);font-size:.68rem; }
+.list-actions { display:flex;gap:4px; }
+.btn-xs { padding:4px 8px;border-radius:5px;font-size:.65rem;font-weight:600;cursor:pointer;text-decoration:none;color:var(--text-muted);background:var(--field-bg);border:1px solid var(--border);transition:all 0.15s;font-family:'DM Sans',sans-serif;white-space:nowrap; }
+.btn-xs:hover { border-color:var(--blue);color:var(--blue); }
+.btn-xs.blue { background:var(--blue);color:#fff;border-color:var(--blue); }
+.btn-xs.blue:hover { opacity:.9; }
+
+/* ── RESPONSIVE ── */
+@media(max-width:640px){
+  header { padding:0 12px;height:48px; }
+  .site-title { font-size:.8rem; }
+  main { padding:10px 10px; }
+  .stats-row { grid-template-columns:1fr 1fr;gap:8px; }
+  .stat-value { font-size:1.1rem; }
+  .charts-row { grid-template-columns:1fr; }
+  .grid-view { grid-template-columns:1fr; }
+  .filter-row-2 .filter-input { min-width:calc(50% - 4px); }
+  .list-header { display:none; }
+  .list-row { grid-template-columns:32px 1fr auto;gap:8px; }
+  .list-exec,.list-game,.list-region,.list-time { display:none; }
+}
+@media(max-width:400px){
+  .stats-row { grid-template-columns:1fr 1fr; }
+  .header-actions .icon-btn:nth-child(3) { display:none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">
+    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+  </div>
+  <div class="site-title">Execute <span>Logs</span></div>
+  <div class="live-pill">
+    <div class="live-dot"></div>
+    Live · <span id="counter">0</span>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="theme-toggle" title="Toggle dark mode">🌙</button>
+    <button class="icon-btn" id="sound-toggle" title="Toggle sound">🔔</button>
+    <button class="icon-btn active" id="view-grid" title="Grid view">▦</button>
+    <button class="icon-btn" id="view-list" title="List view">☰</button>
+  </div>
+</header>
+
+<main>
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Today</div>
+      <div class="stat-value" id="stat-today">0</div>
+      <div class="stat-sub">executions</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">This Week</div>
+      <div class="stat-value" id="stat-week">0</div>
+      <div class="stat-sub">total logs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Last Hour</div>
+      <div class="stat-value" id="stat-hour">0</div>
+      <div class="stat-sub">executions</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Top Country</div>
+      <div class="stat-value" style="font-size:.95rem" id="top-country">—</div>
+      <div class="stat-sub">most active</div>
+    </div>
+  </div>
+
+  <!-- RECENT BAR -->
+  <div class="recent-bar" id="recent-label">Loading...</div>
+
+  <!-- CHARTS -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">Executors</div>
+      <canvas id="execChart" height="120"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Executions by Hour (today)</div>
+      <canvas id="hourChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <input id="search" class="filter-input" type="text" placeholder="Search name or username…" autocomplete="off" spellcheck="false"/>
+  </div>
+  <div class="filter-row-2 filters">
+    <select id="region-filter" class="filter-input"><option value="">All Regions</option></select>
+    <select id="exec-filter"   class="filter-input"><option value="">All Executors</option></select>
+    <select id="game-filter"   class="filter-input"><option value="">All Games</option></select>
+    <select id="sort-sel"      class="filter-input">
+      <option value="newest">Newest first</option>
+      <option value="oldest">Oldest first</option>
+    </select>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <span class="toolbar-label" id="result-label"></span>
+    <button class="export-btn" id="export-btn">⬇ Export CSV</button>
+  </div>
+
+  <div id="loader">Loading logs…</div>
+  <div id="grid" class="grid-view"></div>
+</main>
+
+</body>
+</html>
