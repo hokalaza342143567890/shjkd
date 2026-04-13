@@ -11,9 +11,9 @@
 <meta property="og:image" content="https://i.imgur.com/4M34hi2.png" />
 <meta property="og:url" content="https://nanihs201992-droid.github.io/shjkd/" />
 <meta property="og:type" content="website" />
-<meta name="theme-color" content="#42A5F5" />
+<meta name="theme-color" content="#2563eb" />
 
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -46,52 +46,79 @@
     const diff = Math.floor((Date.now() - ts) / 1000);
     if (diff < 60)   return diff + "s ago";
     if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-    return Math.floor(diff / 3600) + "h ago";
+    if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+    return Math.floor(diff / 86400) + "d ago";
   }
 
   window._copyJobId = function(jobId, shortId) {
     navigator.clipboard.writeText(jobId).then(() => {
       const btn = document.getElementById("copy-" + shortId);
-      if (btn) { btn.textContent = "COPIED!"; setTimeout(() => btn.textContent = "COPY JOB ID", 1500); }
+      if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy Job ID", 1500); }
     });
   };
 
+  function getCountry(region) {
+    if (!region) return null;
+    const parts = region.split(",");
+    return parts.length > 1 ? parts[parts.length - 1].trim() : region.trim();
+  }
+
   function renderCard(data) {
-    const jobId    = data.jobId || "";
-    const placeId  = data.placeId || "";
-    const shortId  = jobId.substring(0, 8);
+    const jobId   = data.jobId || "";
+    const placeId = data.placeId || "";
+    const shortId = jobId.substring(0, 8);
     const joinLink = placeId
       ? `https://www.roblox.com/games/start?placeId=${placeId}&gameInstanceId=${jobId}`
       : null;
     const initials = (data.displayName || "?")[0].toUpperCase();
+    const colors = ["#2563eb","#7c3aed","#db2777","#059669","#d97706","#dc2626"];
+    const color  = colors[data.userId % colors.length];
 
     return `
       <div class="card">
         <div class="card-header">
-          <div class="avatar-wrap">
+          <div class="avatar-wrap" style="--color:${color}">
             <img src="${data.avatarUrl || ''}" class="avatar"
               onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
-            <div class="avatar-fallback">${initials}</div>
+            <div class="avatar-fallback" style="background:${color}20;color:${color};border-color:${color}40">${initials}</div>
           </div>
           <div class="card-title">
             <span class="display-name">${data.displayName || '?'}</span>
             <span class="username">@${data.username || '?'}</span>
           </div>
-          <span class="time-ago">${timeAgo(data.timestamp || Date.now())}</span>
+          <span class="time-badge">${timeAgo(data.timestamp || Date.now())}</span>
         </div>
+
         <div class="card-fields">
-          <div class="field"><span class="label">EXECUTOR</span><span class="value exec">${data.executor || 'Unknown'}</span></div>
-          <div class="field"><span class="label">GAME</span><span class="value">${data.game || 'Unknown'}</span></div>
-          <div class="field"><span class="label">REGION</span><span class="value">${data.region || 'Unknown'}</span></div>
-          <div class="field"><span class="label">JOB ID</span><span class="value mono" title="${jobId}">${shortId}...</span></div>
+          <div class="field">
+            <span class="label">Executor</span>
+            <span class="value accent" style="color:${color}">${data.executor || 'Unknown'}</span>
+          </div>
+          <div class="field">
+            <span class="label">Game</span>
+            <span class="value">${data.game || 'Unknown'}</span>
+          </div>
+          <div class="field">
+            <span class="label">Region</span>
+            <span class="value">${data.region || 'Unknown'}</span>
+          </div>
+          <div class="field">
+            <span class="label">Job ID</span>
+            <span class="value mono" title="${jobId}">${shortId}…</span>
+          </div>
         </div>
+
         <div class="card-actions">
-          <button class="btn-copy" id="copy-${shortId}" onclick="window._copyJobId('${jobId}','${shortId}')">COPY JOB ID</button>
+          <button class="btn-ghost" id="copy-${shortId}"
+            onclick="window._copyJobId('${jobId}','${shortId}')">Copy Job ID</button>
           ${joinLink
-            ? `<a class="btn-join" href="${joinLink}" target="_blank">JOIN SERVER →</a>`
-            : `<span class="btn-join disabled">NO PLACE ID</span>`}
+            ? `<a class="btn-primary" href="${joinLink}" target="_blank">Join Server →</a>`
+            : `<span class="btn-primary disabled">No Place ID</span>`}
         </div>
-        <a class="profile-link" href="https://www.roblox.com/users/${data.userId}/profile" target="_blank">VIEW PROFILE →</a>
+
+        <a class="btn-outline" href="https://www.roblox.com/users/${data.userId}/profile" target="_blank">
+          View Profile →
+        </a>
       </div>
     `;
   }
@@ -99,10 +126,10 @@
   function init() {
     autoClearOldLogs();
 
-    const grid    = document.getElementById("grid");
-    const counter = document.getElementById("counter");
-    const loader  = document.getElementById("loader");
-    const search  = document.getElementById("search");
+    const grid   = document.getElementById("grid");
+    const counter= document.getElementById("counter");
+    const loader = document.getElementById("loader");
+    const search = document.getElementById("search");
     const regionSelect = document.getElementById("region-filter");
     let allEntries = [];
 
@@ -116,9 +143,8 @@
         (d.username || "").toLowerCase().includes(q)
       );
       if (region) filtered = filtered.filter(d => {
-        const parts = (d.region || "").split(",");
-        const country = parts.length > 1 ? parts[parts.length-1].trim().toLowerCase() : (d.region||"").toLowerCase();
-        return country.includes(region);
+        const c = getCountry(d.region || "").toLowerCase();
+        return c.includes(region);
       });
 
       counter.textContent = filtered.length;
@@ -127,20 +153,13 @@
         : '<p class="empty">No results found.</p>';
     }
 
-    function getCountry(region) {
-      if (!region) return null;
-      const parts = region.split(",");
-      return parts.length > 1 ? parts[parts.length - 1].trim() : region.trim();
-    }
-
     function populateRegions(entries) {
       const countries = [...new Set(entries.map(d => getCountry(d.region)).filter(Boolean))].sort();
       const current = regionSelect.value;
-      regionSelect.innerHTML = '<option value="">ALL REGIONS</option>';
+      regionSelect.innerHTML = '<option value="">All Regions</option>';
       countries.forEach(c => {
         const opt = document.createElement("option");
-        opt.value = c;
-        opt.textContent = c;
+        opt.value = c; opt.textContent = c;
         if (c === current) opt.selected = true;
         regionSelect.appendChild(opt);
       });
@@ -157,7 +176,6 @@
         allEntries = [];
         grid.innerHTML = '<p class="empty">No executions logged yet.</p>';
         counter.textContent = 0;
-        regionSelect.innerHTML = '<option value="">ALL REGIONS</option>';
         return;
       }
       allEntries = Object.values(val).reverse();
@@ -170,142 +188,225 @@
 </script>
 
 <style>
-  :root {
-    --bg:      #0a0c10;
-    --surface: #0f1318;
-    --border:  #1e2530;
-    --blue:    #42A5F5;
-    --blue2:   #1565C0;
-    --text:    #c9d1d9;
-    --muted:   #4a5568;
-    --accent:  #00e5ff;
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #f0f2f5;
+    color: #111827;
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; min-height: 100vh; }
-
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
-    pointer-events: none; z-index: 999;
-  }
-
+  /* ── HEADER ── */
   header {
-    border-bottom: 1px solid var(--border);
-    padding: 20px 32px;
-    display: flex; align-items: center; gap: 16px;
-    background: linear-gradient(90deg, #0f1318 0%, #0d1520 100%);
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0 32px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06);
   }
 
-  .logo { width: 10px; height: 10px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 12px var(--accent); animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: #2563eb;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo-mark svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; }
 
-  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; color: #fff; }
-  header h1 span { color: var(--accent); }
+  .site-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111827;
+    letter-spacing: -0.3px;
+  }
+  .site-title span { color: #2563eb; }
 
-  .badge { margin-left: auto; background: var(--blue2); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; padding: 4px 12px; border-radius: 2px; border: 1px solid var(--blue); white-space: nowrap; }
+  .live-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #2563eb;
+    margin-left: auto;
+  }
+  .live-dot {
+    width: 7px; height: 7px;
+    background: #22c55e;
+    border-radius: 50%;
+    animation: blink 1.5s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-  main { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
+  /* ── MAIN ── */
+  main { max-width: 1140px; margin: 0 auto; padding: 28px 20px; }
 
-  .section-label { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--muted); letter-spacing: 3px; margin-bottom: 12px; text-transform: uppercase; }
-  .section-label span { color: var(--accent); margin-left: 8px; }
-
-  .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  /* ── FILTERS ── */
+  .filters {
+    display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;
+  }
 
   .search-bar, .region-select {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    color: var(--text);
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.85rem;
-    padding: 10px 16px;
-    border-radius: 2px;
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    color: #111827;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    padding: 10px 14px;
     outline: none;
-    transition: border-color 0.2s;
-    letter-spacing: 1px;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
-
   .search-bar { flex: 1; min-width: 200px; }
-  .region-select { min-width: 180px; cursor: pointer; }
-  .search-bar::placeholder { color: var(--muted); }
-  .search-bar:focus, .region-select:focus { border-color: var(--accent); box-shadow: 0 0 8px rgba(0,229,255,0.15); }
-
-  #loader { text-align: center; padding: 60px; font-family: 'Share Tech Mono', monospace; color: var(--muted); letter-spacing: 2px; font-size: 0.8rem; }
-  .empty { text-align: center; padding: 60px; color: var(--muted); font-family: 'Share Tech Mono', monospace; }
-
-  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-
-  .card {
-    background: var(--surface); border: 1px solid var(--border); border-top: 2px solid var(--blue);
-    border-radius: 4px; padding: 20px;
-    transition: border-color 0.2s, transform 0.2s;
-    display: flex; flex-direction: column; gap: 14px;
+  .region-select { min-width: 160px; cursor: pointer; }
+  .search-bar::placeholder { color: #9ca3af; }
+  .search-bar:focus, .region-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
   }
-  .card:hover { border-top-color: var(--accent); transform: translateY(-2px); }
 
+  /* ── GRID ── */
+  #loader {
+    text-align: center; padding: 80px;
+    color: #9ca3af; font-size: 0.875rem;
+  }
+  .empty {
+    text-align: center; padding: 80px;
+    color: #9ca3af; font-size: 0.875rem;
+    grid-column: 1/-1;
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  /* ── CARD ── */
+  .card {
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+    animation: fadeUp 0.3s ease both;
+  }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .card:hover {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+    border-color: #bfdbfe;
+  }
+
+  /* ── CARD HEADER ── */
   .card-header { display: flex; align-items: center; gap: 12px; }
 
-  .avatar-wrap { width: 44px; height: 44px; flex-shrink: 0; }
-  .avatar { width: 44px; height: 44px; border-radius: 4px; border: 2px solid var(--blue); object-fit: cover; display: block; }
+  .avatar-wrap { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; overflow: hidden; }
+  .avatar { width: 44px; height: 44px; object-fit: cover; display: block; }
   .avatar-fallback {
-    display: none; width: 44px; height: 44px; border-radius: 4px; border: 2px solid var(--blue);
-    background: var(--blue2); align-items: center; justify-content: center;
-    font-size: 1.2rem; font-weight: 700; color: #fff;
+    display: none; width: 44px; height: 44px;
+    border-radius: 10px; border: 2px solid;
+    align-items: center; justify-content: center;
+    font-size: 1.1rem; font-weight: 700;
   }
 
-  .card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
-  .display-name { font-weight: 700; font-size: 1rem; color: #fff; letter-spacing: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .username { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .time-ago { font-family: 'Share Tech Mono', monospace; font-size: 0.65rem; color: var(--muted); align-self: flex-start; white-space: nowrap; }
+  .card-title { flex: 1; overflow: hidden; }
+  .display-name { display: block; font-weight: 700; font-size: 0.95rem; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .username { display: block; font-size: 0.75rem; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .field { display: flex; flex-direction: column; gap: 3px; }
-  .label { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; color: var(--muted); letter-spacing: 2px; }
-  .value { font-size: 0.9rem; font-weight: 600; color: var(--text); }
-  .value.exec { color: var(--accent); }
-  .value.mono { font-family: 'Share Tech Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+  .time-badge {
+    font-size: 0.7rem; font-weight: 500;
+    background: #f3f4f6; color: #6b7280;
+    padding: 3px 9px; border-radius: 20px;
+    white-space: nowrap; flex-shrink: 0;
+  }
 
+  /* ── FIELDS ── */
+  .card-fields {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    background: #f9fafb; border-radius: 10px; padding: 14px;
+  }
+  .field { display: flex; flex-direction: column; gap: 2px; }
+  .label { font-size: 0.65rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
+  .value { font-size: 0.82rem; font-weight: 600; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .value.mono { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: #6b7280; }
+
+  /* ── BUTTONS ── */
   .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-  .btn-copy, .btn-join {
-    display: block; text-align: center; padding: 8px 4px; border-radius: 2px;
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 1.5px;
-    cursor: pointer; transition: background 0.2s, color 0.2s; text-decoration: none;
+  .btn-ghost, .btn-primary, .btn-outline {
+    display: block; text-align: center;
+    padding: 9px 12px; border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    transition: all 0.15s;
+    border: none;
   }
-  .btn-copy { background: transparent; border: 1px solid var(--muted); color: var(--text); font-family: 'Rajdhani', sans-serif; }
-  .btn-copy:hover { background: var(--muted); color: #fff; }
-  .btn-join { background: var(--blue2); border: 1px solid var(--blue); color: var(--accent); }
-  .btn-join:hover { background: var(--blue); color: #fff; }
-  .btn-join.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
 
-  .profile-link {
-    display: block; text-align: center; padding: 8px;
-    border: 1px solid var(--border); border-radius: 2px;
-    font-size: 0.75rem; font-weight: 700; letter-spacing: 2px;
-    color: var(--blue); text-decoration: none; transition: background 0.2s, color 0.2s;
+  .btn-ghost {
+    background: #f3f4f6; color: #374151;
+    border: 1.5px solid #e5e7eb;
   }
-  .profile-link:hover { background: var(--blue); color: #fff; }
+  .btn-ghost:hover { background: #e5e7eb; }
+
+  .btn-primary {
+    background: #2563eb; color: #fff;
+    border: 1.5px solid #2563eb;
+  }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-primary.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+  .btn-outline {
+    background: transparent; color: #2563eb;
+    border: 1.5px solid #bfdbfe;
+    font-size: 0.78rem;
+  }
+  .btn-outline:hover { background: #eff6ff; border-color: #2563eb; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 480px) {
+    header { padding: 0 16px; }
+    main { padding: 16px 12px; }
+    #grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
+
 <header>
-  <div class="logo"></div>
-  <h1>EXECUTE <span>LOGS</span></h1>
-  <div class="badge">LIVE · <span id="counter">0</span> ENTRIES</div>
+  <div class="logo-mark">
+    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+  </div>
+  <div class="site-title">Execute <span>Logs</span></div>
+  <div class="live-pill">
+    <div class="live-dot"></div>
+    Live · <span id="counter">0</span> entries
+  </div>
 </header>
+
 <main>
-  <div class="section-label">RECENT EXECUTIONS <span>▮</span></div>
   <div class="filters">
-    <input id="search" class="search-bar" type="text" placeholder="Search name or username..." autocomplete="off" spellcheck="false"/>
+    <input id="search" class="search-bar" type="text"
+      placeholder="Search name or username…" autocomplete="off" spellcheck="false"/>
     <select id="region-filter" class="region-select">
-      <option value="">ALL REGIONS</option>
+      <option value="">All Regions</option>
     </select>
   </div>
-  <div id="loader">CONNECTING TO DATABASE</div>
+  <div id="loader">Loading logs…</div>
   <div id="grid"></div>
 </main>
+
 </body>
 </html>
