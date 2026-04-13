@@ -115,9 +115,11 @@
         (d.displayName || "").toLowerCase().includes(q) ||
         (d.username || "").toLowerCase().includes(q)
       );
-      if (region) filtered = filtered.filter(d =>
-        (d.region || "").toLowerCase().includes(region)
-      );
+      if (region) filtered = filtered.filter(d => {
+        const parts = (d.region || "").split(",");
+        const country = parts.length > 1 ? parts[parts.length-1].trim().toLowerCase() : (d.region||"").toLowerCase();
+        return country.includes(region);
+      });
 
       counter.textContent = filtered.length;
       grid.innerHTML = filtered.length
@@ -125,15 +127,21 @@
         : '<p class="empty">No results found.</p>';
     }
 
+    function getCountry(region) {
+      if (!region) return null;
+      const parts = region.split(",");
+      return parts.length > 1 ? parts[parts.length - 1].trim() : region.trim();
+    }
+
     function populateRegions(entries) {
-      const regions = [...new Set(entries.map(d => d.region).filter(Boolean))].sort();
+      const countries = [...new Set(entries.map(d => getCountry(d.region)).filter(Boolean))].sort();
       const current = regionSelect.value;
       regionSelect.innerHTML = '<option value="">ALL REGIONS</option>';
-      regions.forEach(r => {
+      countries.forEach(c => {
         const opt = document.createElement("option");
-        opt.value = r;
-        opt.textContent = r;
-        if (r === current) opt.selected = true;
+        opt.value = c;
+        opt.textContent = c;
+        if (c === current) opt.selected = true;
         regionSelect.appendChild(opt);
       });
     }
@@ -141,7 +149,7 @@
     search.addEventListener("input", renderFiltered);
     regionSelect.addEventListener("change", renderFiltered);
 
-    const logsRef = query(ref(db, "logs"), orderByKey(), limitToLast(200));
+    const logsRef = query(ref(db, "logs"), orderByKey(), limitToLast(1000));
     onValue(logsRef, snapshot => {
       loader.style.display = "none";
       const val = snapshot.val();
