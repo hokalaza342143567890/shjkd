@@ -23,6 +23,40 @@ const db = getDatabase(initializeApp({
 
 
 
+// ── AVATAR (fetched by viewer's browser via CORS proxy — zero game impact) ──
+const avatarCache = {};
+
+async function fetchAvatarsBatch(userIds) {
+  const missing = [...new Set(userIds)].filter(id => id && avatarCache[id] === undefined);
+  if (!missing.length) return;
+  // Mark as pending so we don't double-fetch
+  missing.forEach(id => avatarCache[id] = null);
+  for (let i = 0; i < missing.length; i += 100) {
+    const batch = missing.slice(i, i + 100);
+    try {
+      const apiUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(',')}&size=150x150&format=Png&isCircular=false`;
+      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`);
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      (json.data || []).forEach(d => {
+        avatarCache[d.targetId] = d.imageUrl || null;
+      });
+    } catch(e) {
+      // Fallback: try without proxy (in case CORS is allowed)
+      try {
+        const apiUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(',')}&size=150x150&format=Png&isCircular=false`;
+        const res = await fetch(apiUrl);
+        const json = await res.json();
+        (json.data || []).forEach(d => {
+          avatarCache[d.targetId] = d.imageUrl || null;
+        });
+      } catch(e2) {}
+    }
+  }
+  // Re-render cards with new avatars
+  if (window._rerender) window._rerender();
+}
+
 // ── HELPERS ─────────────────────────────────────────────────────────────────
 function timeAgo(ts) {
   const d = Math.floor((Date.now() - ts) / 1000);
@@ -85,7 +119,7 @@ function renderCard(data) {
   const jobId   = data.jobId || "";
   const shortId = jobId.substring(0, 8);
   const color   = COLORS[(data.userId||0) % COLORS.length];
-  const av      = data.avatarUrl || "";
+  const av      = avatarCache[data.userId] || data.avatarUrl || "";
   const init    = (data.displayName||"?")[0].toUpperCase();
   const join    = data.placeId && jobId
     ? `roblox://experiences/start?placeId=${data.placeId}&gameInstanceId=${jobId}` : null;
@@ -321,7 +355,15 @@ function init() {
 
     updateStats(entries);
 
+    // Fetch avatars via RoProxy in background — no impact on game
+    const ids = [...new Set(all.map(d => d.userId).filter(Boolean))];
+    fetchAvatarsBatch(ids).then(() => render());
+
+    window._rerender = render;
     render();
+    // Fetch avatars in background via browser — doesn't affect game at all
+    const ids = [...new Set(all.map(d => d.userId).filter(Boolean))];
+    fetchAvatarsBatch(ids);
   });
 }
 
