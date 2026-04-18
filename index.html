@@ -13,7 +13,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, query, limitToLast, orderByKey, remove, get }
+import { getDatabase, ref, onValue, query, orderByKey, remove, get }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const db = getDatabase(initializeApp({
@@ -23,37 +23,29 @@ const db = getDatabase(initializeApp({
 
 
 
-// ── AVATAR (fetched by viewer's browser via CORS proxy — zero game impact) ──
+// ── AVATAR via allorigins.win CORS proxy ────────────────────────────────────
+// Uses thumbnails.roblox.com API (same one from devforum.roblox.com/t/2432524)
+// allorigins proxies the request so GitHub Pages CORS restriction is bypassed
 const avatarCache = {};
 
 async function fetchAvatarsBatch(userIds) {
   const missing = [...new Set(userIds)].filter(id => id && avatarCache[id] === undefined);
   if (!missing.length) return;
-  // Mark as pending so we don't double-fetch
-  missing.forEach(id => avatarCache[id] = null);
+  missing.forEach(id => avatarCache[id] = null); // mark pending
+
   for (let i = 0; i < missing.length; i += 100) {
     const batch = missing.slice(i, i + 100);
+    const apiUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(",")}&size=150x150&format=Png&isCircular=false`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
     try {
-      const apiUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(',')}&size=150x150&format=Png&isCircular=false`;
-      const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(apiUrl)}`);
-      if (!res.ok) throw new Error();
+      const res = await fetch(proxyUrl);
+      if (!res.ok) throw new Error("proxy failed");
       const json = await res.json();
       (json.data || []).forEach(d => {
-        avatarCache[d.targetId] = d.imageUrl || null;
+        if (d.imageUrl) avatarCache[d.targetId] = d.imageUrl;
       });
-    } catch(e) {
-      // Fallback: try without proxy (in case CORS is allowed)
-      try {
-        const apiUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(',')}&size=150x150&format=Png&isCircular=false`;
-        const res = await fetch(apiUrl);
-        const json = await res.json();
-        (json.data || []).forEach(d => {
-          avatarCache[d.targetId] = d.imageUrl || null;
-        });
-      } catch(e2) {}
-    }
+    } catch(e) {}
   }
-  // Re-render cards with new avatars
   if (window._rerender) window._rerender();
 }
 
@@ -201,8 +193,7 @@ function renderCharts(entries) {
 // ── THEME ────────────────────────────────────────────────────────────────────
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
-  const btn = document.getElementById("tbtn");
-  if (btn) btn.textContent = t==="dark" ? "☀️" : "🌙";
+  document.getElementById("tbtn").textContent = t==="dark" ? "☀️" : "🌙";
   try { localStorage.setItem("theme", t); } catch(e){}
 }
 const saved = (() => { try { return localStorage.getItem("theme"); } catch(e){ return null; } })();
@@ -333,7 +324,7 @@ function init() {
     });
   }, 30000);
 
-  const logsRef = query(ref(db,"logs"), orderByKey(), limitToLast(1000));
+  const logsRef = query(ref(db,"logs"), orderByKey());
   onValue(logsRef, snapshot => {
     loader.style.display = "none";
     const val = snapshot.val();
@@ -356,12 +347,11 @@ function init() {
 
     updateStats(entries);
 
-    // Fetch avatars in background
-    const ids = [...new Set(all.map(d => d.userId).filter(Boolean))];
     window._rerender = render;
-    fetchAvatarsBatch(ids).then(() => render());
-
     render();
+    // Fetch avatars in background — no game impact
+    const ids = [...new Set(all.map(d => d.userId).filter(Boolean))];
+    fetchAvatarsBatch(ids);
   });
 }
 
