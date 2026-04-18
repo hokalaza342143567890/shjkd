@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -78,7 +78,7 @@ function renderCard(data, viewMode) {
     return `
       <div class="list-row">
         <div class="list-avatar" style="background:${color}20;color:${color};border-color:${color}40">
-          <img src="${data.avatarUrl||''}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block"/>
+          <img src="${avatarUrl}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block"/>
           <span style="display:none;align-items:center;justify-content:center;width:100%;height:100%">${initials}</span>
         </div>
         <div class="list-name">
@@ -101,7 +101,7 @@ function renderCard(data, viewMode) {
     <div class="card">
       <div class="card-header">
         <div class="avatar-wrap">
-          <img src="${data.avatarUrl||''}" class="avatar" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/>
+          <img src="${avatarUrl}" class="avatar" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/>
           <div class="avatar-fallback" style="background:${color}20;color:${color};border-color:${color}40">${initials}</div>
         </div>
         <div class="card-title">
@@ -243,11 +243,22 @@ function init() {
     });
   }, 30000);
 
-  // Dark mode
+  // Dark mode — sync with browser + save preference
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    document.getElementById("theme-toggle").textContent = theme==="dark" ? "☀️" : "🌙";
+    try { localStorage.setItem("theme", theme); } catch(e){}
+  }
+  // Load saved pref or fall back to browser preference
+  const savedTheme = (() => { try { return localStorage.getItem("theme"); } catch(e){ return null; } })();
+  const browserDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(savedTheme || (browserDark ? "dark" : "light"));
+  // Listen for browser theme changes
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
+    if (!localStorage.getItem("theme")) applyTheme(e.matches ? "dark" : "light");
+  });
   document.getElementById("theme-toggle").addEventListener("click", () => {
-    const html = document.documentElement;
-    html.dataset.theme = html.dataset.theme==="light" ? "dark" : "light";
-    document.getElementById("theme-toggle").textContent = html.dataset.theme==="dark" ? "☀️" : "🌙";
+    applyTheme(document.documentElement.dataset.theme==="dark" ? "light" : "dark");
   });
 
   // Sound toggle
@@ -377,16 +388,16 @@ window.addEventListener("DOMContentLoaded", init);
 }
 [data-theme="dark"] {
   --bg: #0f1117;
-  --surface: #1a1d27;
-  --border: #2a2d3a;
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --text-sub: #64748b;
-  --blue: #3b82f6;
-  --blue-light: #1e3a5f20;
-  --blue-border: #1e40af;
-  --field-bg: #131620;
-  --shadow: rgba(0,0,0,0.3);
+  --surface: #1c1f2e;
+  --border: #2e3248;
+  --text: #f0f4ff;
+  --text-muted: #b0bcdc;
+  --text-sub: #7b8ab8;
+  --blue: #60a5fa;
+  --blue-light: rgba(96,165,250,0.12);
+  --blue-border: #3b5fc0;
+  --field-bg: #161926;
+  --shadow: rgba(0,0,0,0.4);
 }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -503,7 +514,7 @@ main { max-width:1140px;margin:0 auto;padding:16px 14px; }
 .card-fields { display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--field-bg);border-radius:8px;padding:10px; }
 .field { display:flex;flex-direction:column;gap:2px; }
 .label { font-size:.58rem;font-weight:600;color:var(--text-sub);text-transform:uppercase;letter-spacing:.5px; }
-.value { font-size:.75rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.value { font-size:.75rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 0.2s; }
 .value.mono { font-family:'DM Mono',monospace;font-size:.68rem;color:var(--text-muted); }
 
 .card-actions { display:grid;grid-template-columns:1fr 1fr;gap:6px; }
@@ -551,9 +562,9 @@ main { max-width:1140px;margin:0 auto;padding:16px 14px; }
 .status-badge.online { background: #dcfce7; color: #16a34a; }
 .status-badge.left    { background: #fee2e2; color: #dc2626; }
 .status-badge.unknown { background: #f3f4f6; color: #6b7280; }
-[data-theme="dark"] .status-badge.online   { background: #14532d40; color: #4ade80; }
-[data-theme="dark"] .status-badge.left     { background: #7f1d1d40; color: #f87171; }
-[data-theme="dark"] .status-badge.unknown  { background: #1f293740; color: #94a3b8; }
+[data-theme="dark"] .status-badge.online   { background: rgba(74,222,128,0.15); color: #4ade80; }
+[data-theme="dark"] .status-badge.left     { background: rgba(248,113,113,0.15); color: #f87171; }
+[data-theme="dark"] .status-badge.unknown  { background: rgba(148,163,184,0.1); color: #94a3b8; }
 
 .status-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
 .status-dot.online  { background:#22c55e;box-shadow:0 0 4px #22c55e; }
