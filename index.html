@@ -21,11 +21,7 @@ const db = getDatabase(initializeApp({
   projectId:   "okok9k-7b233"
 }));
 
-// Avatar URL built directly — img tags follow Roblox's redirect, no CORS issue
-function avatarUrl(userId) {
-  if (!userId) return "";
-  return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
-}
+
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
 function timeAgo(ts) {
@@ -89,7 +85,7 @@ function renderCard(data) {
   const jobId   = data.jobId || "";
   const shortId = jobId.substring(0, 8);
   const color   = COLORS[(data.userId||0) % COLORS.length];
-  const av      = avatarUrl(data.userId);
+  const av      = data.avatarUrl || "";
   const init    = (data.displayName||"?")[0].toUpperCase();
   const join    = data.placeId && jobId
     ? `roblox://experiences/start?placeId=${data.placeId}&gameInstanceId=${jobId}` : null;
