@@ -201,7 +201,8 @@ function renderCharts(entries) {
 // ── THEME ────────────────────────────────────────────────────────────────────
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
-  document.getElementById("tbtn").textContent = t==="dark" ? "☀️" : "🌙";
+  const btn = document.getElementById("tbtn");
+  if (btn) btn.textContent = t==="dark" ? "☀️" : "🌙";
   try { localStorage.setItem("theme", t); } catch(e){}
 }
 const saved = (() => { try { return localStorage.getItem("theme"); } catch(e){ return null; } })();
@@ -355,15 +356,12 @@ function init() {
 
     updateStats(entries);
 
-    // Fetch avatars via RoProxy in background — no impact on game
+    // Fetch avatars in background
     const ids = [...new Set(all.map(d => d.userId).filter(Boolean))];
+    window._rerender = render;
     fetchAvatarsBatch(ids).then(() => render());
 
-    window._rerender = render;
     render();
-    // Fetch avatars in background via browser — doesn't affect game at all
-    const ids = [...new Set(all.map(d => d.userId).filter(Boolean))];
-    fetchAvatarsBatch(ids);
   });
 }
 
