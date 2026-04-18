@@ -21,22 +21,10 @@ const db = getDatabase(initializeApp({
   projectId:   "okok9k-7b233"
 }));
 
-// ── AVATAR CACHE (fetched by browser, not Lua) ──────────────────────────────
-const avatarCache = {};
-async function fetchAvatars(userIds) {
-  const missing = userIds.filter(id => id && !avatarCache[id]);
-  if (!missing.length) return;
-  // Roblox thumbnails API supports up to 100 userIds per request
-  for (let i = 0; i < missing.length; i += 100) {
-    const batch = missing.slice(i, i + 100);
-    try {
-      const res = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(",")}&size=150x150&format=Png&isCircular=false`
-      );
-      const json = await res.json();
-      (json.data || []).forEach(d => { if (d.imageUrl) avatarCache[d.targetId] = d.imageUrl; });
-    } catch(e) {}
-  }
+// Avatar URL built directly — img tags follow Roblox's redirect, no CORS issue
+function avatarUrl(userId) {
+  if (!userId) return "";
+  return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
 }
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
@@ -101,7 +89,7 @@ function renderCard(data) {
   const jobId   = data.jobId || "";
   const shortId = jobId.substring(0, 8);
   const color   = COLORS[(data.userId||0) % COLORS.length];
-  const av      = avatarCache[data.userId] || "";
+  const av      = avatarUrl(data.userId);
   const init    = (data.displayName||"?")[0].toUpperCase();
   const join    = data.placeId && jobId
     ? `roblox://experiences/start?placeId=${data.placeId}&gameInstanceId=${jobId}` : null;
@@ -315,7 +303,7 @@ function init() {
   }, 30000);
 
   const logsRef = query(ref(db,"logs"), orderByKey(), limitToLast(1000));
-  onValue(logsRef, async snapshot => {
+  onValue(logsRef, snapshot => {
     loader.style.display = "none";
     const val = snapshot.val();
     if (!val) {
@@ -336,10 +324,6 @@ function init() {
     fill(gSel, [...new Set(entries.map(d=>d.game).filter(Boolean))].sort(), "All Games");
 
     updateStats(entries);
-
-    // Fetch avatars in browser (no Lua overhead at all)
-    const ids = [...new Set(entries.map(d=>d.userId).filter(Boolean))];
-    await fetchAvatars(ids);
 
     render();
   });
