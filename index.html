@@ -129,8 +129,8 @@ function renderCard(data, viewMode) {
 
 // ── COPY ──
 window._loadMore = function() {
-  displayLimit += 50;
-  renderFiltered();
+  window._state.displayLimit += 50;
+  if (window._state.render) window._state.render();
 };
 
 window._copy = function(jobId, shortId) {
@@ -233,7 +233,6 @@ function init() {
   let viewMode   = "grid";
   let prevCount  = 0;
   let soundOn    = true;
-  let displayLimit = 50;
 
   // Timestamp auto-refresh
   setInterval(() => {
@@ -274,7 +273,7 @@ function init() {
   // Export
   document.getElementById("export-btn").addEventListener("click", () => window._exportCSV(allEntries));
 
-  let renderFiltered = function() {
+  function renderFiltered() {
     const q      = search.value.toLowerCase().trim();
     const region = regionSel.value.toLowerCase();
     const exec   = execSel.value.toLowerCase();
@@ -289,8 +288,8 @@ function init() {
     if (sort==="oldest") filtered.reverse();
 
     counter.textContent = filtered.length;
-    const toDisplay = filtered.slice(0, displayLimit);
-    const hasMore = filtered.length > displayLimit;
+    const toDisplay = filtered.slice(0, window._state.displayLimit);
+    const hasMore = filtered.length > window._state.displayLimit;
     
     // Disable animations for performance when displaying many cards
     if (toDisplay.length > 50) {
@@ -344,9 +343,9 @@ function init() {
     updateCharts(entries);
   }
 
-  window.renderFiltered = renderFiltered;
-  [search,regionSel,execSel,gameSel,sortSel].forEach(el => el && el.addEventListener("change", () => { displayLimit = 50; renderFiltered(); }));
-  search.addEventListener("input", renderFiltered);
+  window._state.render = renderFiltered;
+  [search,regionSel,execSel,gameSel,sortSel].forEach(el => el && el.addEventListener("change", () => { window._state.displayLimit = 50; renderFiltered(); }));
+  search.addEventListener("input", () => { window._state.displayLimit = 50; renderFiltered(); });
 
   const logsRef = query(ref(db,"logs"), orderByKey(), limitToLast(1000));
   onValue(logsRef, snapshot => {
@@ -362,7 +361,7 @@ function init() {
     if (soundOn && prevCount > 0 && newEntries.length > prevCount) playPing();
     prevCount = newEntries.length;
     allEntries = newEntries;
-    displayLimit = 50;
+    window._state.displayLimit = 50;
     populateFilters(allEntries);
     updateStats(allEntries);
     renderFiltered();
