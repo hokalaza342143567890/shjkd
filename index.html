@@ -23,30 +23,55 @@ const db = getDatabase(initializeApp({
 
 
 
-// ── AVATAR via allorigins.win CORS proxy ────────────────────────────────────
-// Uses thumbnails.roblox.com API (same one from devforum.roblox.com/t/2432524)
-// allorigins proxies the request so GitHub Pages CORS restriction is bypassed
+// ── AVATAR — multi-strategy with 4 fallbacks ────────────────────────────────
 const avatarCache = {};
+
+// Strategy 1: direct img src (no fetch needed, img tags ignore CORS)
+// Roblox legacy URL redirects to CDN — works as <img src> even cross-origin
+function directAvatarUrl(userId) {
+  return `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
+}
+
+// Strategy 2-5: fetch JSON via proxy, get real CDN URL for broken cases
+const PROXIES = [
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  url => `https://thingproxy.freeboard.io/fetch/${url}`,
+];
+
+async function tryFetchJSON(url) {
+  for (const proxy of PROXIES) {
+    try {
+      const res = await fetch(proxy(url), { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json && json.data) return json;
+    } catch(e) {}
+  }
+  return null;
+}
 
 async function fetchAvatarsBatch(userIds) {
   const missing = [...new Set(userIds)].filter(id => id && avatarCache[id] === undefined);
   if (!missing.length) return;
-  missing.forEach(id => avatarCache[id] = null); // mark pending
+  // Pre-fill with direct URL immediately — renders right away without waiting for fetch
+  missing.forEach(id => { avatarCache[id] = directAvatarUrl(id); });
+  // Re-render immediately with direct URLs
+  if (window._rerender) window._rerender();
 
+  // Then try to get proper CDN URLs via proxy for higher quality
   for (let i = 0; i < missing.length; i += 100) {
     const batch = missing.slice(i, i + 100);
     const apiUrl = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${batch.join(",")}&size=150x150&format=Png&isCircular=false`;
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`;
-    try {
-      const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error("proxy failed");
-      const json = await res.json();
+    const json = await tryFetchJSON(apiUrl);
+    if (json) {
       (json.data || []).forEach(d => {
         if (d.imageUrl) avatarCache[d.targetId] = d.imageUrl;
       });
-    } catch(e) {}
+      if (window._rerender) window._rerender();
+    }
   }
-  if (window._rerender) window._rerender();
 }
 
 // ── HELPERS ─────────────────────────────────────────────────────────────────
@@ -121,7 +146,7 @@ function renderCard(data) {
   <div class="card">
     <div class="card-top">
       <div class="av" style="--c:${color}">
-        ${av ? `<img src="${av}" loading="lazy" onerror="this.style.display='none'">` : ""}
+        ${av ? `<img src="${av}" loading="lazy" onerror="this.style.display='none';this.parentElement.querySelector('span').style.zIndex=3">` : ""}
         <span>${init}</span>
       </div>
       <div class="card-name">
